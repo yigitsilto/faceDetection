@@ -55,12 +55,19 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - 22181:2181
+    healthcheck:
+      test: [ "CMD", "echo", "ruok" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 
   kafka:
     container_name: macromusic_kafka
     image: confluentinc/cp-kafka:latest
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - 29092:29092
     environment:
@@ -71,10 +78,10 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     healthcheck:
-      test: [ "CMD", "kafka-topics", "--list", "--zookeeper", "zookeeper:2181" ]
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "localhost:29092", "--list" ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
 
 volumes:
   postgres-db:
