@@ -97,7 +97,7 @@ func (f *FileServiceImpl) buildResponseForImageFeed(
 			CreatedAt: entity.CreatedAt.Format(time.RFC3339), // String olarak tarih ve saat
 			UpdatedAt: entity.UpdatedAt.Format(time.RFC3339),
 			Path:      entity.Path,
-			Id:        int64(entity.Id), // Veritabanı ID'sini int64'e dönüştür
+			Id:        int64(entity.Id),
 		}
 
 		// Values dizisini döngü içinde geziyoruz ve her bir öğesini ekliyoruz
