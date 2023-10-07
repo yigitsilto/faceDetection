@@ -8,6 +8,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     ports:
       - "9000:9000"
   redis:
@@ -18,6 +22,11 @@ services:
     command: redis-server --save 20 1 --loglevel warning --requirepass root
     volumes:
       - redis:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
             
   postgres:
     container_name: macromusic_postgres
@@ -32,7 +41,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U macromusic -d mydb"]
+      test: ["CMD-SHELL", "pg_isready -U macromusic -d macromusic"]
       interval: 30s
       timeout: 20s
       retries: 5
@@ -61,13 +70,11 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-  kafka_manager:
-    image: hlebalbau/kafka-manager:stable
-    ports:
-      - "9094:9094"
-    environment:
-      ZK_HOSTS: "macromusic_zookeper:2181" # ZooKeeper servis adı
-      APPLICATION_SECRET: "random-secret"
+    healthcheck:
+      test: [ "CMD", "kafka-topics", "--list", "--zookeeper", "zookeeper:2181" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres-db:
