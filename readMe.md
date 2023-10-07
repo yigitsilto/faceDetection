@@ -15,7 +15,7 @@ Bu projeyi başlatmak için aşağıdaki önkoşulları karşılamalısınız:
 git clone https://github.com/yigitsilto/faceDetection.git
 Proje dizinine gidin:
 
-
+ # SH Hakkında
 runProtosAndProject.sh komutunu çalıştırarak Docker konteynerlerini başlatın ve proto çıktısını hazırlayın:
 
 - sh runProtosAndProject.sh
