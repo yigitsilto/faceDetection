@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package makromusic;
+
+option go_package = "makromusic/proto;makromusic_proto";
+
+
+
+message FileUploadRequest {
+  bytes byte = 1;
+}
+message FileUploadResponse {
+  bool status = 1;
+}
+
+message GetImageDetailRequest{
+  int64 id = 1;
+}
+
+message ImageDetailResponse{
+  string face = 1;
+}
+
+message GetImageFeedResponse {
+  repeated ImageItem imageItems = 1; // Tekrar alanı olarak tanımlanan ImageItem
+}
+
+message ImageItem {
+  string createdAt = 1;
+  string updatedAt = 2;
+  string path = 3;
+  int64 id = 4;
+  repeated ImageValues values = 5;
+}
+
+message ImageValues {
+  string key = 1;
+  string value = 2;
+}
+
+message GetImageFeedRequest {
+  int32 page = 1;
+}
+
+message UpdateImageDetailRequest{
+  int64 id = 1;
+}
+
+message UpdateImageDetailResponse {
+  bool status = 1;
+}
+
+
+service FileService {
+  rpc UploadFile(stream FileUploadRequest) returns(FileUploadResponse);
+  rpc GetImageDetail(GetImageDetailRequest) returns(ImageDetailResponse);
+  rpc GetImageFeed(GetImageFeedRequest) returns(GetImageFeedResponse);
+  rpc UpdateImageDetail(UpdateImageDetailRequest) returns(UpdateImageDetailResponse);
+
+}
