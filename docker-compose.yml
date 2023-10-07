@@ -9,7 +9,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8443:8443"
+      - "9000:9000"
   redis:
     image: redis:6.2-alpine
     restart: always
