@@ -6,7 +6,9 @@ type FileService interface {
 	UploadFile(server FileService_UploadFileServer) error
 	GetImageDetail(ctx context.Context, request *GetImageDetailRequest) (*ImageDetailResponse, error)
 	GetImageFeed(ctx context.Context, request *GetImageFeedRequest) (*GetImageFeedResponse, error)
-	UpdateImageDetail(ctx context.Context, request *UpdateImageDetailRequest) (*UpdateImageDetailResponse, error)
+	UpdateProducer(
+		ctx context.Context, request *UpdateImageDetailRequest,
+	) (*UpdateImageDetailResponse, error)
 }
 
 type FileServer struct {
@@ -20,7 +22,7 @@ func NewFileServer(fileService FileService) FileServiceServer {
 func (f *FileServer) UpdateImageDetail(
 	ctx context.Context, request *UpdateImageDetailRequest,
 ) (*UpdateImageDetailResponse, error) {
-	return f.fileService.UpdateImageDetail(ctx, request)
+	return f.fileService.UpdateProducer(ctx, request)
 }
 
 func (f *FileServer) UploadFile(server FileService_UploadFileServer) error {

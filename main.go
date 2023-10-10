@@ -19,16 +19,17 @@ func main() {
 	loadDatabase()
 	db := database.Database
 	redisClient := config.NewRedisClient()
+	fileServiceImpl := services.NewFileService(db, redisClient)
 
-	visionServiceImpl := services.NewVisionService(db, redisClient)
+	visionServiceImpl := services.NewVisionService(db, redisClient, fileServiceImpl)
 	fileConsumer := consumers.NewFileUploadConsumer(visionServiceImpl)
-	go fileConsumer.FileUploadConsumer()
+	go fileConsumer.FileStoreConsumer()
+	go fileConsumer.FileUpdateConsumer()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 9000))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	fileServiceImpl := services.NewFileService(db, redisClient)
 	file := makromusic_proto.NewFileServer(fileServiceImpl)
 	s := grpc.NewServer()
 

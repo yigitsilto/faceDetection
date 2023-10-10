@@ -1,6 +1,9 @@
 package services
 
 import (
+	"cloud.google.com/go/vision/v2/apiv1/visionpb"
+	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	"githup.com/makromusicCase/makromusic/config"
 	"githup.com/makromusicCase/makromusic/entities"
@@ -10,6 +13,7 @@ import (
 	"gorm.io/gorm"
 	"io"
 	"io/ioutil"
+	"os"
 	"strconv"
 	"time"
 )
@@ -22,7 +26,10 @@ type FileService interface {
 	GetImageFeed(
 		ctx context.Context, request *makromusic_proto.GetImageFeedRequest,
 	) (*makromusic_proto.GetImageFeedResponse, error)
-	UpdateImageDetail(
+	UpdateImageDetail(fileId uint, annotations []*visionpb.FaceAnnotation) error
+	GetFileByPath(path string) (entities.FileEntity, error)
+	CreateFeeds(fileId uint, annotations []*visionpb.FaceAnnotation) error
+	UpdateProducer(
 		ctx context.Context, request *makromusic_proto.UpdateImageDetailRequest,
 	) (*makromusic_proto.UpdateImageDetailResponse, error)
 }
@@ -38,7 +45,7 @@ func NewFileService(
 	return &FileServiceImpl{db: db, redis: redis}
 }
 
-func (f *FileServiceImpl) UpdateImageDetail(
+func (f *FileServiceImpl) UpdateProducer(
 	ctx context.Context, request *makromusic_proto.UpdateImageDetailRequest,
 ) (*makromusic_proto.UpdateImageDetailResponse, error) {
 
@@ -50,9 +57,30 @@ func (f *FileServiceImpl) UpdateImageDetail(
 		return nil, err
 	}
 
-	f.sendToKafka(fileEntity.Path)
+	topic := os.Getenv("UPDATE_IMAGE_DETAIL_TOPIC")
+
+	f.sendToKafka(fileEntity.Path, topic)
 
 	return &makromusic_proto.UpdateImageDetailResponse{Status: true}, nil
+
+}
+
+func (f *FileServiceImpl) UpdateImageDetail(fileId uint, annotations []*visionpb.FaceAnnotation) error {
+
+	// önce oluşturulan bütün feedleri sil
+	err := f.db.Where("file_id = ?", fileId).Delete(&entities.FileFeedValueEntity{}).Error
+
+	if err != nil {
+		return err
+	}
+
+	// feedleri tekrar oluştur
+	err = f.CreateFeeds(fileId, annotations)
+	if err != nil {
+		return err
+	}
+
+	return nil
 
 }
 
@@ -177,11 +205,99 @@ func (f *FileServiceImpl) saveToDisc(byte []byte, filePath string) error {
 		return err
 	}
 
+	topic := os.Getenv("KAFKA_FILE_TOPIC")
+
 	// send to producer
-	f.sendToKafka(filePath)
+	f.sendToKafka(filePath, topic)
 	return nil
 }
 
-func (f *FileServiceImpl) sendToKafka(filePath string) {
-	producers.FileUploadProducer(filePath)
+func (f *FileServiceImpl) sendToKafka(filePath string, topic string) {
+	producers.FileUploadProducer(filePath, topic)
+}
+
+func (f *FileServiceImpl) GetFileByPath(path string) (entities.FileEntity, error) {
+	var fileEntity entities.FileEntity
+	err := f.db.Table("file_entities").Where("path = ?", path).Find(&fileEntity).Error
+
+	if err != nil {
+		return fileEntity, err
+	}
+
+	return fileEntity, nil
+
+}
+
+func (f *FileServiceImpl) CreateFeeds(fileId uint, annotations []*visionpb.FaceAnnotation) error {
+
+	tx := f.db.Begin()
+	defer tx.Rollback()
+
+	for _, annotation := range annotations {
+
+		keys := []string{
+			"Anger", "Joy", "Surprise", "UnderExposed", "Blurred", "Headwear", "Sorrow",
+		}
+
+		var err error
+
+		for _, key := range keys {
+			valueEntity := entities.FileFeedValueEntity{
+				Key:    key,
+				Value:  f.getFieldLikelihood(annotation, key),
+				FileId: fileId,
+			}
+
+			err = f.db.Create(&valueEntity).Error
+		}
+
+		if err != nil {
+			tx.Rollback()
+		}
+
+		tx.Commit()
+	}
+
+	// başarıyla sql e kaydettikten sonra redise kaydet
+	err := f.addFeedJsonToRedis(fileId, annotations)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (f *FileServiceImpl) getFieldLikelihood(annotation *visionpb.FaceAnnotation, key string) string {
+	switch key {
+	case "Anger":
+		return annotation.AngerLikelihood.String()
+	case "Joy":
+		return annotation.JoyLikelihood.String()
+	case "Surprise":
+		return annotation.SurpriseLikelihood.String()
+	case "UnderExposed":
+		return annotation.UnderExposedLikelihood.String()
+	case "Blurred":
+		return annotation.BlurredLikelihood.String()
+	case "Headwear":
+		return annotation.HeadwearLikelihood.String()
+	case "Sorrow":
+		return annotation.SorrowLikelihood.String()
+	default:
+		return ""
+	}
+}
+
+func (f *FileServiceImpl) addFeedJsonToRedis(fileId uint, annotations []*visionpb.FaceAnnotation) error {
+	annotationsJSON, err := json.Marshal(annotations)
+	if err != nil {
+		fmt.Println("JSON dönüşüm hatası:", err)
+		return err
+	}
+
+	err = f.redis.Set("feeds-"+strconv.Itoa(int(fileId)), string(annotationsJSON))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

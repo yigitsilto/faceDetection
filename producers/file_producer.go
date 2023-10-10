@@ -6,9 +6,8 @@ import (
 	"os"
 )
 
-func FileUploadProducer(kafkaMessage string) {
+func FileUploadProducer(kafkaMessage string, topic string) {
 	broker := os.Getenv("KAFKA_BROKER")
-	topic := os.Getenv("KAFKA_FILE_TOPIC")
 
 	// Kafka broker adresleri
 	brokers := []string{broker}

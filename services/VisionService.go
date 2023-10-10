@@ -4,33 +4,32 @@ import (
 	vision "cloud.google.com/go/vision/apiv1"
 	"cloud.google.com/go/vision/v2/apiv1/visionpb"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"githup.com/makromusicCase/makromusic/config"
-	"githup.com/makromusicCase/makromusic/entities"
 	"gorm.io/gorm"
 	"io"
 	"os"
-	"strconv"
 )
 
 type VisionService interface {
-	DetectFaces(w io.Writer, file string) error
+	CreateDetectedFaces(w io.Writer, file string) error
+	UpdateDetectedFaces(w io.Writer, file string) error
 }
 
 type VisionServiceImpl struct {
-	db    *gorm.DB
-	redis *config.RedisClient
+	db          *gorm.DB
+	redis       *config.RedisClient
+	fileService FileService
 }
 
 func NewVisionService(
-	db *gorm.DB, redis *config.RedisClient,
+	db *gorm.DB, redis *config.RedisClient, fileService FileService,
 ) VisionService {
-	return &VisionServiceImpl{db: db, redis: redis}
+	return &VisionServiceImpl{db: db, redis: redis, fileService: fileService}
 }
 
-func (r *VisionServiceImpl) DetectFaces(w io.Writer, file string) error {
-
+func (r *VisionServiceImpl) generateFaceDetections(w io.Writer, file string) ([]*visionpb.FaceAnnotation, error) {
 	ctx := context.Background()
 	credentialPath := "./credentials.json"
 
@@ -48,129 +47,71 @@ func (r *VisionServiceImpl) DetectFaces(w io.Writer, file string) error {
 
 	client, err := vision.NewImageAnnotatorClient(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer client.Close()
 
 	f, err := os.Open(file)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
 	image, err := vision.NewImageFromReader(f)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	annotations, err := client.DetectFaces(ctx, image, nil, 10)
+	if err != nil {
+		return nil, err
+	}
+
+	return annotations, err
+}
+
+func (r *VisionServiceImpl) UpdateDetectedFaces(w io.Writer, file string) error {
+
+	annotations, err := r.generateFaceDetections(w, file)
 	if err != nil {
 		return err
 	}
 	if len(annotations) == 0 {
-		fmt.Fprintln(w, "No faces found.")
-	} else {
-
-		// file bul ve getir
-		path, err := r.getFileByPath(file)
-		if err != nil || path.Path == "" {
-			return err
-		}
-
-		// veritabanına feed leri ekle
-		err = r.createFeeds(path.Id, annotations, w)
-		if err != nil {
-			return err
-		}
-
+		return errors.New("no faces found")
 	}
+
+	// file bul ve getir
+	path, err := r.fileService.GetFileByPath(file)
+	if err != nil || path.Path == "" {
+		return err
+	}
+
+	// veritabanına feed leri ekle
+	err = r.fileService.UpdateImageDetail(path.Id, annotations)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (r *VisionServiceImpl) getFileByPath(path string) (entities.FileEntity, error) {
-	var fileEntity entities.FileEntity
-	err := r.db.Table("file_entities").Where("path = ?", path).Find(&fileEntity).Error
+func (r *VisionServiceImpl) CreateDetectedFaces(w io.Writer, file string) error {
 
-	if err != nil {
-		return fileEntity, err
-	}
-
-	return fileEntity, nil
-
-}
-
-func (r *VisionServiceImpl) createFeeds(fileId uint, annotations []*visionpb.FaceAnnotation, w io.Writer) error {
-
-	tx := r.db.Begin()
-	defer tx.Rollback()
-
-	if err := r.db.Where("file_id = ?", fileId).Delete(&entities.FileFeedValueEntity{}).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	for _, annotation := range annotations {
-
-		keys := []string{
-			"Anger", "Joy", "Surprise", "UnderExposed", "Blurred", "Headwear", "Sorrow",
-		}
-
-		var err error
-
-		// Iterate through the keys and create valueEntity objects
-		for _, key := range keys {
-			valueEntity := entities.FileFeedValueEntity{
-				Key:    key,
-				Value:  r.getFieldLikelihood(annotation, key),
-				FileId: fileId,
-			}
-
-			err = r.db.Create(&valueEntity).Error
-		}
-
-		if err != nil {
-			tx.Rollback()
-		}
-
-		tx.Commit()
-	}
-
-	// başarıyla sql e kaydettikten sonra redise kaydet
-	err := r.addFeedJsonToRedis(fileId, annotations)
+	annotations, err := r.generateFaceDetections(w, file)
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func (r *VisionServiceImpl) getFieldLikelihood(annotation *visionpb.FaceAnnotation, key string) string {
-	switch key {
-	case "Anger":
-		return annotation.AngerLikelihood.String()
-	case "Joy":
-		return annotation.JoyLikelihood.String()
-	case "Surprise":
-		return annotation.SurpriseLikelihood.String()
-	case "UnderExposed":
-		return annotation.UnderExposedLikelihood.String()
-	case "Blurred":
-		return annotation.BlurredLikelihood.String()
-	case "Headwear":
-		return annotation.HeadwearLikelihood.String()
-	case "Sorrow":
-		return annotation.SorrowLikelihood.String()
-	default:
-		return ""
+	if len(annotations) == 0 {
+		return errors.New("no faces found")
 	}
-}
 
-func (r *VisionServiceImpl) addFeedJsonToRedis(fileId uint, annotations []*visionpb.FaceAnnotation) error {
-	annotationsJSON, err := json.Marshal(annotations)
-	if err != nil {
-		fmt.Println("JSON dönüşüm hatası:", err)
+	// file bul ve getir
+	path, err := r.fileService.GetFileByPath(file)
+	if err != nil || path.Path == "" {
 		return err
 	}
 
-	err = r.redis.Set("feeds-"+strconv.Itoa(int(fileId)), string(annotationsJSON))
+	// veritabanına feed leri ekle
+	err = r.fileService.CreateFeeds(path.Id, annotations)
 	if err != nil {
 		return err
 	}
