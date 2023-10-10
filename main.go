@@ -43,7 +43,10 @@ func main() {
 
 func loadDatabase() {
 	database.Connect()
-	database.Database.AutoMigrate(&entities.FileEntity{}, &entities.FileFeedValueEntity{})
+	err := database.Database.AutoMigrate(&entities.FileEntity{}, &entities.FileFeedValueEntity{})
+	if err != nil {
+		return
+	}
 }
 
 func loadEnv() {
