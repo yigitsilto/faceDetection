@@ -17,6 +17,28 @@ func NewFileUploadConsumer(service services.VisionService) FileUploadConsumerRec
 	return FileUploadConsumerReceiver{visionService: service}
 }
 
+func (r *FileUploadConsumerReceiver) FileStoreConsumer() {
+	broker := os.Getenv("KAFKA_BROKER")
+	topic := os.Getenv("KAFKA_FILE_TOPIC")
+
+	processMessage := func(msg string) error {
+		return r.visionService.CreateDetectedFaces(os.Stdout, msg)
+	}
+
+	r.consumeKafkaMessages(broker, topic, processMessage)
+}
+
+func (r *FileUploadConsumerReceiver) FileUpdateConsumer() {
+	broker := os.Getenv("KAFKA_BROKER")
+	topic := os.Getenv("UPDATE_IMAGE_DETAIL_TOPIC")
+
+	processMessage := func(msg string) error {
+		return r.visionService.UpdateDetectedFaces(os.Stdout, msg)
+	}
+
+	r.consumeKafkaMessages(broker, topic, processMessage)
+}
+
 func (r *FileUploadConsumerReceiver) consumeKafkaMessages(broker, topic string, processMessage func(string) error) {
 	// Kafka broker adresleri
 	brokers := []string{broker}
@@ -73,7 +95,7 @@ func (r *FileUploadConsumerReceiver) consumeKafkaMessages(broker, topic string, 
 						string(msg.Value),
 					)
 
-					// işlem fonksiyonu çağırır
+					// işlem için fonksiyon çağır
 					err := processMessage(string(msg.Value))
 					if err != nil {
 						log.Printf("Error processing message: %v", err)
@@ -89,26 +111,4 @@ func (r *FileUploadConsumerReceiver) consumeKafkaMessages(broker, topic string, 
 	}
 
 	wg.Wait()
-}
-
-func (r *FileUploadConsumerReceiver) FileStoreConsumer() {
-	broker := os.Getenv("KAFKA_BROKER")
-	topic := os.Getenv("KAFKA_FILE_TOPIC")
-
-	processMessage := func(msg string) error {
-		return r.visionService.CreateDetectedFaces(os.Stdout, msg)
-	}
-
-	r.consumeKafkaMessages(broker, topic, processMessage)
-}
-
-func (r *FileUploadConsumerReceiver) FileUpdateConsumer() {
-	broker := os.Getenv("KAFKA_BROKER")
-	topic := os.Getenv("UPDATE_IMAGE_DETAIL_TOPIC")
-
-	processMessage := func(msg string) error {
-		return r.visionService.UpdateDetectedFaces(os.Stdout, msg)
-	}
-
-	r.consumeKafkaMessages(broker, topic, processMessage)
 }
