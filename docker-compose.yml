@@ -15,7 +15,9 @@ services:
     ports:
       - "9000:9000"
     volumes:
-      - ./public:/public
+      - type: bind
+        source: ./public
+        target: ./public
     restart: always
 
   redis:
