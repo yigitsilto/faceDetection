@@ -98,7 +98,7 @@ func TestFileServiceImpl_UpdateImageDetail(t *testing.T) {
 func TestMockFileService_GetFileByPath(t *testing.T) {
 	mock := &services.MockFileService{
 		GetFileByPathFunc: func(path string) (entities.FileEntity, error) {
-			if path == "existing_path" {
+			if path == "exists" {
 				return entities.FileEntity{}, nil
 			}
 			return entities.FileEntity{}, errors.New("File not found")
@@ -106,16 +106,16 @@ func TestMockFileService_GetFileByPath(t *testing.T) {
 	}
 
 	// success
-	path1 := "existing_path"
+	path1 := "exists"
 	fileEntity1, err1 := mock.GetFileByPath(path1)
 	assert.NoError(t, err1)
 	assert.NotNil(t, fileEntity1)
 
 	// error
-	path2 := "non_existing_path"
+	path2 := "not_exists"
 	fileEntity2, err2 := mock.GetFileByPath(path2)
 	assert.Error(t, err2)
-	assert.Nil(t, fileEntity2)
+	assert.Empty(t, fileEntity2.Path)
 	assert.Equal(t, "File not found", err2.Error())
 }
 func TestMockFileService_CreateFeeds(t *testing.T) {
